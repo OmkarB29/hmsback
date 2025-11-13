@@ -14,6 +14,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.http.HttpMethod;
 
 import java.util.List;
 
@@ -39,30 +40,24 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(csrf -> csrf.disable())
-                .headers(headers -> headers.frameOptions(frameOptions -> frameOptions.disable()))  // Allow H2 console frames
-                .cors(cors -> cors.configurationSource(corsConfigurationSource())) // ✅ Enable custom CORS
-                .authorizeHttpRequests(auth -> auth
-
-
-                        .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/h2-console/**").permitAll()  // ✅ Allow H2 console access
-                        .requestMatchers("/api/students/**").hasAnyAuthority("ADMIN", "WARDEN")
-                        .requestMatchers("/api/admin/**").hasAuthority("ADMIN")
-                        .requestMatchers("/api/complaints/**").hasAnyAuthority("STUDENT", "WARDEN", "ADMIN")
-                        .requestMatchers("/api/warden/**").hasAuthority("WARDEN")
-                        .requestMatchers("/api/student/**").hasAuthority("STUDENT")
-                        //.requestMatchers("/api/student/**").hasAuthority("STUDENT")
-                        .requestMatchers("/api/warden/**").hasAnyAuthority("WARDEN", "ADMIN")
-                        .requestMatchers("/api/student/**").hasAnyAuthority("STUDENT", "ADMIN", "WARDEN")
-
-
-
-                        .anyRequest().authenticated()
-                )
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .userDetailsService(customUserDetailsService)
-                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+            .csrf(csrf -> csrf.disable())
+            .headers(headers -> headers.frameOptions(frameOptions -> frameOptions.disable()))
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                .requestMatchers("/api/health").permitAll()
+                .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers("/h2-console/**").permitAll()
+                .requestMatchers("/api/students/**").hasAnyAuthority("ADMIN", "WARDEN")
+                .requestMatchers("/api/admin/**").hasAuthority("ADMIN")
+                .requestMatchers("/api/complaints/**").hasAnyAuthority("STUDENT", "WARDEN", "ADMIN")
+                .requestMatchers("/api/warden/**").hasAnyAuthority("WARDEN")
+                .requestMatchers("/api/student/**").hasAnyAuthority("STUDENT", "ADMIN", "WARDEN")
+                .anyRequest().authenticated()
+            )
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .userDetailsService(customUserDetailsService)
+            .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
@@ -71,10 +66,15 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("http://localhost:3000"));
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        configuration.setAllowedOrigins(List.of(
+            "http://localhost:3000",
+            "http://localhost:8080",
+            "https://hmsclg.netlify.app"
+        ));
+        configuration.setAllowedMethods(List.of("*"));  // Allow all methods including OPTIONS
+        configuration.setAllowedHeaders(List.of("*"));  // Allow all headers
         configuration.setAllowCredentials(true);
+        configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
