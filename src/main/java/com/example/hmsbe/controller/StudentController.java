@@ -163,21 +163,70 @@ public class StudentController {
         }
     }
 
-    // 💰 Get Fees for the student
+    // 💰 Get Fees for the logged-in student
     @GetMapping("/fees")
-    public Fee getFee() {
-        return feeRepository.findAll().stream().findFirst().orElse(null);
+    public ResponseEntity<?> getFee(
+            @RequestHeader(value = "x-test-user", required = false) String xTestUser,
+            @RequestHeader(value = "Authorization", required = false) String auth) {
+        String username = resolveUsername(xTestUser, auth);
+        log.info("GET /fees request for username={}", username);
+        
+        if (username == null) {
+            log.warn("No username found in headers");
+            return ResponseEntity.badRequest().body("Missing user header");
+        }
+
+        try {
+            // Find fee by student username
+            List<Fee> allFees = feeRepository.findAll();
+            log.info("Total fees in database: {}", allFees.size());
+            
+            for (Fee fee : allFees) {
+                log.debug("Checking fee for student: {}", fee.getStudentName());
+                if (fee.getStudentName() != null && fee.getStudentName().equals(username)) {
+                    log.info("Found fee for username={}: amount={}, status={}", username, fee.getAmount(), fee.getStatus());
+                    return ResponseEntity.ok(fee);
+                }
+            }
+
+            // Return a default fee object if not found
+            log.warn("No fee found for username={}, returning default", username);
+            Fee defaultFee = new Fee();
+            defaultFee.setStudentName(username);
+            defaultFee.setAmount(0);
+            defaultFee.setStatus("UNPAID");
+            return ResponseEntity.ok(defaultFee);
+        } catch (Exception e) {
+            log.error("Error fetching fees for username={}", username, e);
+            return ResponseEntity.status(500).body("Error fetching fee details: " + e.getMessage());
+        }
     }
 
     // 💳 Pay Fees (mock payment)
     @PostMapping("/fees/pay")
-    public Fee payFee() {
-        Fee fee = feeRepository.findAll().stream().findFirst().orElse(null);
-        if (fee != null) {
-            fee.setStatus("PAID");
-            feeRepository.save(fee);
+    public ResponseEntity<?> payFee(
+            @RequestHeader(value = "x-test-user", required = false) String xTestUser,
+            @RequestHeader(value = "Authorization", required = false) String auth) {
+        String username = resolveUsername(xTestUser, auth);
+        if (username == null)
+            return ResponseEntity.badRequest().body("Missing user header");
+
+        try {
+            // Find fee by student username
+            List<Fee> allFees = feeRepository.findAll();
+            for (Fee fee : allFees) {
+                if (fee.getStudentName() != null && fee.getStudentName().equals(username)) {
+                    fee.setStatus("PAID");
+                    feeRepository.save(fee);
+                    return ResponseEntity.ok(fee);
+                }
+            }
+
+            return ResponseEntity.ok().body("Fee record not found");
+        } catch (Exception e) {
+            log.error("Error paying fees for username={}", username, e);
+            return ResponseEntity.status(500).body("Error processing payment");
         }
-        return fee;
     }
 
     // ✅ Delete a complaint by ID
