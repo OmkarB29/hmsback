@@ -121,10 +121,7 @@ public class StudentController {
     // }
 
     // 📢 Get Notices (same as for students)
-    // @GetMapping("/notices")
-    // public List<Notice> getNotices() {
-    // return noticeRepository.findAll();
-    // }
+    // Note: student notices endpoint is provided by `StudentNoticeController`.
 
     // 🏠 Get Room Details for logged-in student
     @GetMapping("/room")
