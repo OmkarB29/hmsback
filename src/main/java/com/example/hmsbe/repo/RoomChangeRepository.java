@@ -7,4 +7,3 @@ import java.util.List;
 public interface RoomChangeRepository extends JpaRepository<RoomChange, Long> {
     List<RoomChange> findByStudentUsername(String studentUsername);
 }
-
