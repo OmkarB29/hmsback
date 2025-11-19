@@ -2,6 +2,7 @@ package com.example.hmsbe.controller;
 
 import com.example.hmsbe.model.*;
 import com.example.hmsbe.repo.*;
+import com.example.hmsbe.security.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,14 +15,13 @@ import java.util.*;
 
 @RestController
 @RequestMapping("/api/student")
-@CrossOrigin(origins = {"http://localhost:3000", "http://hmsclg.netlify.app", "https://hmsclg.netlify.app"})
+@CrossOrigin(origins = { "http://localhost:3000", "http://hmsclg.netlify.app", "https://hmsclg.netlify.app" })
 public class StudentController {
     private static final Logger log = LoggerFactory.getLogger(StudentController.class);
 
     @Autowired
     private StudentRepository studentRepository;
 
-    // add these if controller uses them
     @Autowired
     private RoomChangeRequestRepository roomChangeRepo;
 
@@ -34,12 +34,22 @@ public class StudentController {
     @Autowired
     private ComplaintRepository complaintRepository;
 
-    // simpler helper
+    @Autowired
+    private JwtUtil jwtUtil;
+
+    // Helper method to extract username from JWT token or x-test-user header
     private String resolveUsername(String xTestUser, String auth) {
         if (xTestUser != null && !xTestUser.isBlank())
             return xTestUser;
-        if (auth != null && auth.startsWith("Bearer "))
-            return auth.substring(7);
+        if (auth != null && auth.startsWith("Bearer ")) {
+            String token = auth.substring(7); // Remove "Bearer " prefix
+            try {
+                return jwtUtil.extractUsername(token);
+            } catch (Exception e) {
+                log.warn("Failed to extract username from JWT token", e);
+                return null;
+            }
+        }
         return null;
     }
 
@@ -93,37 +103,17 @@ public class StudentController {
                 .orElse(ResponseEntity.ok().body(new Student()));
     }
 
-    // 📝 Submit room change request
     @PostMapping("/room-change")
     public RoomChangeRequest requestRoomChange(@RequestBody RoomChangeRequest request) {
         request.setStatus("PENDING");
         return roomChangeRepo.save(request);
     }
 
-    // 📋 View all own requests
     @GetMapping("/room-change")
     public List<RoomChangeRequest> getRequests() {
         return roomChangeRepo.findAll();
     }
 
-    // 🗣 Add Complaint
-    // @PostMapping("/complaints")
-    // public Complaint addComplaint(@RequestBody Complaint complaint) {
-    // return complaintRepository.save(complaint);
-    // }
-
-    // 📋 Get Complaints for a student
-    // @GetMapping("/complaints")
-    // public List<Complaint> getComplaints(@RequestHeader("Authorization") String
-    // token) {
-    // // Normally you'd extract username from JWT token
-    // return complaintRepository.findAll(); // or findByStudentName(username)
-    // }
-
-    // 📢 Get Notices (same as for students)
-    // Note: student notices endpoint is provided by `StudentNoticeController`.
-
-    // 🏠 Get Room Details for logged-in student
     @GetMapping("/room")
     public ResponseEntity<?> getRoom(
             @RequestHeader(value = "x-test-user", required = false) String xTestUser,
@@ -133,19 +123,16 @@ public class StudentController {
             return ResponseEntity.badRequest().body("Missing user header");
 
         try {
-            // Get the student record for the logged-in user
             Optional<Student> student = studentRepository.findByUsername(username);
             if (student.isEmpty()) {
-                return ResponseEntity.ok().body(new Room()); // Return empty room if student not found
+                return ResponseEntity.ok().body(new Room());
             }
 
-            // Get the room number from student record
             String roomNumber = student.get().getRoomNumber();
             if (roomNumber == null || roomNumber.isEmpty()) {
-                return ResponseEntity.ok().body(null); // No room assigned yet
+                return ResponseEntity.ok().body(null);
             }
 
-            // Try to find the room by room number
             List<Room> allRooms = roomRepository.findAll();
             for (Room room : allRooms) {
                 if (room.getRoomNo() != null && room.getRoomNo().equals(roomNumber)) {
@@ -153,40 +140,38 @@ public class StudentController {
                 }
             }
 
-            return ResponseEntity.ok().body(null); // Room number not found in database
+            return ResponseEntity.ok().body(null);
         } catch (Exception e) {
             log.error("Error fetching room for username={}", username, e);
             return ResponseEntity.status(500).body("Error fetching room details");
         }
     }
 
-    // 💰 Get Fees for the logged-in student
     @GetMapping("/fees")
     public ResponseEntity<?> getFee(
             @RequestHeader(value = "x-test-user", required = false) String xTestUser,
             @RequestHeader(value = "Authorization", required = false) String auth) {
         String username = resolveUsername(xTestUser, auth);
         log.info("GET /fees request for username={}", username);
-        
+
         if (username == null) {
             log.warn("No username found in headers");
             return ResponseEntity.badRequest().body("Missing user header");
         }
 
         try {
-            // Find fee by student username
             List<Fee> allFees = feeRepository.findAll();
             log.info("Total fees in database: {}", allFees.size());
-            
+
             for (Fee fee : allFees) {
                 log.debug("Checking fee for student: {}", fee.getStudentName());
                 if (fee.getStudentName() != null && fee.getStudentName().equals(username)) {
-                    log.info("Found fee for username={}: amount={}, status={}", username, fee.getAmount(), fee.getStatus());
+                    log.info("Found fee for username={}: amount={}, status={}", username, fee.getAmount(),
+                            fee.getStatus());
                     return ResponseEntity.ok(fee);
                 }
             }
 
-            // Return a default fee object if not found
             log.warn("No fee found for username={}, returning default", username);
             Fee defaultFee = new Fee();
             defaultFee.setStudentName(username);
@@ -199,7 +184,6 @@ public class StudentController {
         }
     }
 
-    // 💳 Pay Fees (mock payment)
     @PostMapping("/fees/pay")
     public ResponseEntity<?> payFee(
             @RequestHeader(value = "x-test-user", required = false) String xTestUser,
@@ -209,7 +193,6 @@ public class StudentController {
             return ResponseEntity.badRequest().body("Missing user header");
 
         try {
-            // Find fee by student username
             List<Fee> allFees = feeRepository.findAll();
             for (Fee fee : allFees) {
                 if (fee.getStudentName() != null && fee.getStudentName().equals(username)) {
@@ -226,7 +209,6 @@ public class StudentController {
         }
     }
 
-    // ✅ Delete a complaint by ID
     @DeleteMapping("/complaints/{id}")
     public void deleteComplaint(@PathVariable Long id) {
         complaintRepository.deleteById(id);
