@@ -106,6 +106,12 @@ public class StudentController {
     @PostMapping("/room-change")
     public RoomChangeRequest requestRoomChange(@RequestBody RoomChangeRequest request) {
         request.setStatus("PENDING");
+        // Normalize studentName: if frontend sent username, replace with real name for warden view
+        if (request.getStudentName() != null && !request.getStudentName().isBlank()) {
+            studentRepository.findByUsername(request.getStudentName()).ifPresent(s ->
+                    request.setStudentName(s.getName() != null && !s.getName().isBlank() ? s.getName() : s.getUsername())
+            );
+        }
         return roomChangeRepo.save(request);
     }
 
@@ -163,11 +169,16 @@ public class StudentController {
             List<Fee> allFees = feeRepository.findAll();
             log.info("Total fees in database: {}", allFees.size());
 
+            // try to map username -> student full name and match either
+            Optional<Student> studentOpt = studentRepository.findByUsername(username);
+            String fullName = studentOpt.map(Student::getName).orElse(null);
+
             for (Fee fee : allFees) {
                 log.debug("Checking fee for student: {}", fee.getStudentName());
-                if (fee.getStudentName() != null && fee.getStudentName().equals(username)) {
-                    log.info("Found fee for username={}: amount={}, status={}", username, fee.getAmount(),
-                            fee.getStatus());
+                String sname = fee.getStudentName();
+                if (sname == null) continue;
+                if (sname.equalsIgnoreCase(username) || (fullName != null && sname.equalsIgnoreCase(fullName))) {
+                    log.info("Found fee for username={}: amount={}, status={}", username, fee.getAmount(), fee.getStatus());
                     return ResponseEntity.ok(fee);
                 }
             }
@@ -194,8 +205,13 @@ public class StudentController {
 
         try {
             List<Fee> allFees = feeRepository.findAll();
+            Optional<Student> studentOpt = studentRepository.findByUsername(username);
+            String fullName = studentOpt.map(Student::getName).orElse(null);
+
             for (Fee fee : allFees) {
-                if (fee.getStudentName() != null && fee.getStudentName().equals(username)) {
+                String sname = fee.getStudentName();
+                if (sname == null) continue;
+                if (sname.equalsIgnoreCase(username) || (fullName != null && sname.equalsIgnoreCase(fullName))) {
                     fee.setStatus("PAID");
                     feeRepository.save(fee);
                     return ResponseEntity.ok(fee);

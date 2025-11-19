@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import com.example.hmsbe.model.RoomChangeRequest;
 import com.example.hmsbe.repo.RoomChangeRequestRepository;
+import com.example.hmsbe.service.NotificationService;
 
 
 import java.util.List;
@@ -28,6 +29,8 @@ public class WardenController {
     private RoomChangeRequestRepository roomChangeRepo;
     @Autowired
     private StudentRepository studentRepo;  // Make sure to import and have repository
+    @Autowired
+    private NotificationService notificationService;
 
     // 🔹 Get all student details
     @GetMapping("/students")
@@ -44,13 +47,29 @@ public class WardenController {
     // ✅ Get all room change requests
     @GetMapping("/room-change")
     public List<RoomChangeRequest> getAllRoomChangeRequests() {
-        return roomChangeRepo.findAll();
+        List<RoomChangeRequest> requests = roomChangeRepo.findAll();
+        // normalize stored studentName: if it's actually a username, replace with real name for display
+        for (RoomChangeRequest r : requests) {
+            if (r.getStudentName() != null && !r.getStudentName().isBlank()) {
+                studentRepo.findByUsername(r.getStudentName()).ifPresent(s ->
+                        r.setStudentName(s.getName() != null && !s.getName().isBlank() ? s.getName() : s.getUsername())
+                );
+            }
+        }
+        return requests;
     }
     @PutMapping("/students/{id}/room")
     public Student updateStudentRoom(@PathVariable Long id, @RequestParam String roomNo) {
         Student student = studentRepo.findById(id).orElseThrow();
         student.setRoomNumber(roomNo); // ✅ corrected field name
-        return studentRepo.save(student);
+        Student saved = studentRepo.save(student);
+        // notify subscribers about the room assignment
+        try {
+            notificationService.sendRoomAssignment(saved.getId(), roomNo);
+        } catch (Exception ex) {
+            // swallow notification errors to not break the main flow
+        }
+        return saved;
     }
 
 

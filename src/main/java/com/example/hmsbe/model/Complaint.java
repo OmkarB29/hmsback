@@ -13,6 +13,7 @@ public class Complaint {
     private Long id;
 
     private String roomNumber;
+    private String studentName;
     private String message;
     private String status;
 }
